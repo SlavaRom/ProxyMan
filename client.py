@@ -20,37 +20,18 @@ def get_proxy(sock, types):
 
 sock = get_connection()
 
-time.sleep(20)  # имитация попадания запроса прокси на момент проверки на сервере работоспособности прокси
 start = time.time()
-get_proxy(sock, ["HTTP"])
-print(time.time() - start)
-start = time.time()
-get_proxy(sock, ["HTTP"])
-print(time.time() - start)
-start = time.time()
-get_proxy(sock, ["HTTP"])
-print(time.time() - start)
-start = time.time()
-get_proxy(sock, ["HTTP"])
-print(time.time() - start)
-start = time.time()
-get_proxy(sock, ["HTTP"])
-print(time.time() - start)
-start = time.time()
-get_proxy(sock, ["HTTP"])
-print(time.time() - start)
-start = time.time()
-get_proxy(sock, ["HTTP"])
-print(time.time() - start)
-start = time.time()
-get_proxy(sock, ["HTTP"])
-print(time.time() - start)
-start = time.time()
-get_proxy(sock, ["HTTP"])
-print(time.time() - start)
-start = time.time()
-get_proxy(sock, ["HTTP"])
-print(time.time() - start)
-start = time.time()
-
+max = 0
+K = 10
+I = 10
+for k in range(0, K):
+    for i in range(0, I):
+        get_proxy(sock, ["HTTP"])
+        lim = time.time() - start
+        print(i, lim)
+        if lim > max:
+            max = lim
+        start = time.time()
+    time.sleep(2)
+print('Max time:', max)
 sock.close()

@@ -167,9 +167,9 @@ import urllib.error
 import ssl
 import json
 
-FIND_EXACTLY = 2
-FIND_MAX = 10
-ACTIVE_PROXY = 5
+FIND_EXACTLY = 5
+FIND_MAX = 50
+ACTIVE_PROXY = 10
 TIMEOUT = 20
 
 class EmptyListProxyException(Exception):
@@ -222,7 +222,8 @@ async def check_proxies():  # Обновляет proxy_dict
     #while True:
     for http_key in ["http", "https"]:  # Чередует "http" и "https"
         for proxy in proxy_dict[http_key]:
-            if is_bad_proxy(proxy):
+            is_bad = await is_bad_proxy(proxy)
+            if is_bad:
                 await proxy_dict[http_key].remove(proxy)
 
 
