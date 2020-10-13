@@ -24,14 +24,18 @@ start = time.time()
 max = 0
 K = 10
 I = 10
+sum = 0
 for k in range(0, K):
     for i in range(0, I):
         get_proxy(sock, ["HTTP"])
         lim = time.time() - start
         print(i, lim)
+        sum += lim
         if lim > max:
             max = lim
         start = time.time()
     time.sleep(2)
+sred = sum / (I+K)
+print('Sred time:', sred)
 print('Max time:', max)
 sock.close()
