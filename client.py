@@ -3,6 +3,7 @@
 
 import socket
 import json
+import time
 
 def get_connection():
     sock = socket.socket()
@@ -13,11 +14,22 @@ def get_proxy(sock, types):
     temp_dict = {"function": "get_proxy", 'params': [types]}
     json_req = json.dumps(temp_dict)
     sock.send(json_req.encode())
-    data = json.loads(sock.recv(2048))
+    data = json.loads(sock.recv(2048).decode())
     print(data)
 
 
 sock = get_connection()
+start = time.time()
 get_proxy(sock, ["HTTP"])
-get_proxy(sock, ["HTTPS"])
+print(time.time() - start)
+start = time.time()
+get_proxy(sock, ["HTTP"])
+print(time.time() - start)
+start = time.time()
+get_proxy(sock, ["HTTP"])
+print(time.time() - start)
+start = time.time()
+get_proxy(sock, ["HTTP"])
+print(time.time() - start)
+start = time.time()
 sock.close()
