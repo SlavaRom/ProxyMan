@@ -167,7 +167,10 @@ import urllib.error
 import ssl
 import json
 
-TIME_CHECK = 5    # время, через которое будет проверять прокси на работоспособность (в секундах)
+FIND_EXACTLY = 2
+FIND_MAX = 10
+ACTIVE_PROXY = 5
+TIMEOUT = 20
 
 class EmptyListProxyException(Exception):
     pass
@@ -247,17 +250,47 @@ def get_proxy(req_type):  # Находит в proxy_dict лучший прокс
                     return best_proxy
     print('Implicit context switch back to bar')
 
-conn = get_connection()
+async def func(proxies, start):
+    while True:
+        # asyncio.ensure_future(check_connection(conn))  # Неблокирующий вызов
+        # await broker.find(types=["HTTPS", "HTTP"], limit=FIND_EXACTLY)  # Блокирующий вызов
+        # if time.time() - start > TIMEOUT or len(proxy_dict['http']) < 2 or len(proxy_dict['http']) < 2:
+        #     await find_proxies(proxies)  # Блокирующий вызов
+        #     await check_proxies()  # Блокирующий вызов
+        #     start = time.time()
+        await check_connection(conn)  # Блокирующий вызов
+        asyncio.ensure_future(broker.find(types=["HTTPS", "HTTP"], limit=FIND_EXACTLY))  # Неблокирующий вызов
+        if time.time() - start > TIMEOUT or len(proxy_dict['http']) < ACTIVE_PROXY or len(proxy_dict['http']) < ACTIVE_PROXY:
+            asyncio.ensure_future(find_proxies(proxies))  # Неблокирующий вызов
+            asyncio.ensure_future(check_proxies())  # Неблокирующий вызов
+            start = time.time()
+
+
+# proxies = asyncio.Queue()
+# broker = Broker(proxies)
+# ioloop = asyncio.get_event_loop()
+# tasks = [broker.find(types=["HTTP", "HTTPS"], limit=5),
+#          ioloop.create_task(find_proxies(proxies)),
+#          ioloop.create_task(check_connection(conn)),
+#          ioloop.create_task(check_proxies())]
+# wait_tasks = asyncio.wait(tasks)
+# ioloop.run_until_complete(wait_tasks)
+# print('Close connection')
+# ioloop.close()
 
 proxies = asyncio.Queue()
 broker = Broker(proxies)
-ioloop = asyncio.get_event_loop()
-tasks = [broker.find(types=["HTTP", "HTTPS"], limit=5),
-         ioloop.create_task(find_proxies(proxies)),
-         ioloop.create_task(check_connection(conn)),
-         ioloop.create_task(check_proxies())]
+
+loop = asyncio.get_event_loop()
+tasks = [broker.find(types=["HTTP", "HTTPS"], limit=FIND_MAX),
+         loop.create_task(find_proxies(proxies))]
 wait_tasks = asyncio.wait(tasks)
-ioloop.run_until_complete(wait_tasks)
+loop.run_until_complete(wait_tasks)
+
+conn = get_connection()
+
+start = time.time()
+ioloop = asyncio.get_event_loop()
+ioloop.run_until_complete(func(proxies, start))
 print('Close connection')
 ioloop.close()
-

@@ -19,6 +19,8 @@ def get_proxy(sock, types):
 
 
 sock = get_connection()
+
+time.sleep(20)  # имитация попадания запроса прокси на момент проверки на сервере работоспособности прокси
 start = time.time()
 get_proxy(sock, ["HTTP"])
 print(time.time() - start)
@@ -32,4 +34,23 @@ start = time.time()
 get_proxy(sock, ["HTTP"])
 print(time.time() - start)
 start = time.time()
+get_proxy(sock, ["HTTP"])
+print(time.time() - start)
+start = time.time()
+get_proxy(sock, ["HTTP"])
+print(time.time() - start)
+start = time.time()
+get_proxy(sock, ["HTTP"])
+print(time.time() - start)
+start = time.time()
+get_proxy(sock, ["HTTP"])
+print(time.time() - start)
+start = time.time()
+get_proxy(sock, ["HTTP"])
+print(time.time() - start)
+start = time.time()
+get_proxy(sock, ["HTTP"])
+print(time.time() - start)
+start = time.time()
+
 sock.close()
