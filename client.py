@@ -16,6 +16,7 @@ def get_proxy(sock, types):
     sock.send(json_req.encode())
     data = json.loads(sock.recv(2048).decode())
     print(data)
+    return data
 
 
 sock = get_connection()
