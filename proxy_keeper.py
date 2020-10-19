@@ -55,18 +55,24 @@ async def get_reponce_time(proxy):
 
 
 async def find_proxies(proxies):  # Заполняет proxy_dict
+    start = time.time()
     while True:
-        proxy = await proxies.get()
-        print("Добавляем новый прокси", proxy)
-        if proxy is None:
-            break
-        proto = 'https' if 'HTTPS' in proxy.types else 'http'
-        val = '%s://%s:%d' % (proto, proxy.host, proxy.port)
-        res_time = proxy.avg_resp_time
-        # {"https": [{"proxy": val, "responce_time": res_time}, {...}], "http": [...]}
-        #proxy_dict[proto].append(val)
-        asyncio.sleep(0)
-        proxy_dict[proto].append({'proxy': val, 'response_time': res_time})
+        if time.time() - start > TIMEOUT or len(proxy_dict['http']) < FIND_MAX or len(
+                proxy_dict['https']) < FIND_MAX:
+            for a in range(0, FIND_MAX-len(proxy_dict['http'])):
+                proxy = await proxies.get()
+                print("Добавляем новый прокси", proxy)
+                if proxy is None:
+                    break
+                proto = 'https' if 'HTTPS' in proxy.types else 'http'
+                val = '%s://%s:%d' % (proto, proxy.host, proxy.port)
+                res_time = proxy.avg_resp_time
+                # {"https": [{"proxy": val, "responce_time": res_time}, {...}], "http": [...]}
+                #proxy_dict[proto].append(val)
+                asyncio.sleep(0)
+                proxy_dict[proto].append({'proxy': val, 'response_time': res_time})
+        else:
+            await asyncio.sleep(0.01)
 
 
 async def check_proxies():  # Обновляет proxy_dict
@@ -81,14 +87,15 @@ async def check_proxies():  # Обновляет proxy_dict
                 proxy_dict[http_key].remove(proxy)
 
 async def check_connection(conn):
-    req_body = conn.recv(2048)
-    if req_body:
-        request = json.loads(req_body)
-        proxy = get_proxy(request['params']['proxy_types'])
-        send = json.dumps(proxy)
-        print("Send: ", send)
-        conn.send(send.encode())
-    await asyncio.sleep(0.01)
+    while True:
+        req_body = conn.recv(2048)
+        if req_body:
+            request = json.loads(req_body)
+            proxy = get_proxy(request['params']['proxy_types'])
+            send = json.dumps(proxy)
+            print("Send: ", send)
+            conn.send(send.encode())
+        await asyncio.sleep(0.01)
 
 
 def get_proxy(proxy_type):  # Находит в proxy_dict лучший прокси и возвращает его
@@ -137,16 +144,16 @@ async def main(proxies, broker, start):
 proxies = asyncio.Queue()
 broker = Broker(proxies)
 
-loop = asyncio.get_event_loop()
-tasks = [broker.find(types=["HTTP"], limit=70),
-         loop.create_task(find_proxies(proxies))]
-wait_tasks = asyncio.wait(tasks)
-loop.run_until_complete(wait_tasks)
+
 #loop.run_until_complete(check_proxies())
 print("Прокси набрались")
+
 conn = get_connection()
 
 start = time.time()
 ioloop = asyncio.get_event_loop()
-ioloop.run_until_complete(main(proxies, broker, start))
+ioloop.create_task(broker.find(types=["HTTP"], limit=FIND_MAX-len(proxy_dict['http'])))
+ioloop.create_task(find_proxies(proxies))
+ioloop.create_task(check_connection(conn))
+ioloop.run_forever()
 print('Close connection')
