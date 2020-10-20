@@ -52,12 +52,11 @@ def get_reponce_time(proxy):
     except Exception as err:
         print(f'Bad proxy: {err}')
         return err
-    print("Время отклика = ", str(response.elapsed.total_seconds()))
     return response.elapsed.total_seconds()  # время отклика в секундах
 
 
 async def find_proxies(proxies):  # Заполняет proxy_dict
-    start = time.time()
+    print("Зашли в find_proxies")
     while True:
         proxy = await proxies.get()
         print("Добавляем новый прокси", proxy)
@@ -66,10 +65,8 @@ async def find_proxies(proxies):  # Заполняет proxy_dict
         proto = 'https' if 'HTTPS' in proxy.types else 'http'
         val = '%s://%s:%d' % (proto, proxy.host, proxy.port)
         res_time = proxy.avg_resp_time
-        # {"https": [{"proxy": val, "responce_time": res_time}, {...}], "http": [...]}
-        #proxy_dict[proto].append(val)
-        asyncio.sleep(0)
         proxy_dict[proto].append({'proxy': val, 'response_time': res_time})
+
 
 async def check_proxies():  # Обновляет proxy_dict
     for http_key in ["http", "https"]:  # Чередует "http" и "https"
@@ -82,16 +79,18 @@ async def check_proxies():  # Обновляет proxy_dict
             except requests.exceptions.HTTPError:
                 proxy_dict[http_key].remove(proxy)
 
+
 async def check_connection(conn):
     while True:
         req_body = conn.recv(2048)
+        print("Проверка соединения")
         if req_body:
             request = json.loads(req_body)
             proxy = get_proxy(request['params']['proxy_types'])
             send = json.dumps(proxy)
             print("Send: ", send)
             conn.send(send.encode())
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0)
 
 
 def get_proxy(proxy_type):  # Находит в proxy_dict лучший прокси и возвращает его
@@ -115,7 +114,8 @@ def get_proxy(proxy_type):  # Находит в proxy_dict лучший прок
     print('Get proxy. Time: ', time.time() - start)
 
 
-async def main(proxies, broker, start):
+async def main(proxies, broker):
+    start = time.time()
     while True:
         ioloop.create_task(check_connection(conn))
         if time.time() - start > TIMEOUT or len(proxy_dict['http']) < FIND_MAX or len(
@@ -123,7 +123,6 @@ async def main(proxies, broker, start):
             print("Обновляем список прокси!")
             ioloop.create_task(broker.find(types=["HTTP"], limit=FIND_MAX-len(proxy_dict['http'])))   # Неблокирующий вызов
             await asyncio.sleep(0.05)
-            #asyncio.ensure_future(find_proxies(proxies))  # Неблокирующий вызов
             ioloop.create_task(find_proxies(proxies))  # Неблокирующий вызов
             print("После find_proxies")
             await asyncio.sleep(0.1)
@@ -135,16 +134,15 @@ proxies = asyncio.Queue()
 broker = Broker(proxies)
 
 loop = asyncio.get_event_loop()
-tasks = [broker.find(types=["HTTP"], limit=70),
+tasks = [loop.create_task(broker.find(types=["HTTP"], limit=70)),
          loop.create_task(find_proxies(proxies))]
 wait_tasks = asyncio.wait(tasks)
 loop.run_until_complete(wait_tasks)
-#loop.run_until_complete(check_proxies())
 print("Прокси набрались")
 
 conn = get_connection()
 
 start = time.time()
 ioloop = asyncio.get_event_loop()
-ioloop.run_until_complete(main(proxies, broker, start))
+ioloop.run_until_complete(main(proxies, broker))
 print('Close connection')
