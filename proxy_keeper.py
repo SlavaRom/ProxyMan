@@ -54,18 +54,19 @@ def get_reponce_time(proxy):
         return http_err
     except Exception as err:
         print(f'Bad proxy: {err}')
-        return err
+        raise err
     return response.elapsed.total_seconds()  # время отклика в секундах
 
 
 async def find_proxies(proxies):  # Заполняет proxy_dict
     print("Зашли в find_proxies")
-    is_finding_run = True
+    global is_finding_run
     while True:
         proxy = await proxies.get()
         print("Добавляем новый прокси", proxy)
         if proxy is None:
             is_finding_run = False
+            print("Вышли из find_proxies")
             break
         proto = 'https' if 'HTTPS' in proxy.types else 'http'
         val = '%s://%s:%d' % (proto, proxy.host, proxy.port)
@@ -106,37 +107,40 @@ def get_proxy(proxy_type):  # Находит в proxy_dict лучший прок
     print('Get proxy. Time: ', time.time() - start)
 
 
-async def main(proxies, broker):
+async def main():
+    proxies = asyncio.Queue()
+    broker = Broker(proxies, timeout=6)
+    proxy_find_task = ioloop.create_task(asyncio.sleep(2))
+    proxy_add_task = ioloop.create_task(asyncio.sleep(2))
+
+    last_check_time = time.time()
     start = time.time()
-    print("Заход в main в ", start)
-    # ioloop.create_task(check_connection(conn))
-    host = ''
-    port = 9090
-    # print("start")
-    ioloop.run_in_executor(_executor, HTTPServer((host, port), HandleRequests).serve_forever)
-    while True:  # Не создавайте задачи внутри цикла!
-        if not is_finding_run and (len(proxy_dict['http']) < FIND_MAX or len(proxy_dict['https']) < FIND_MAX):
-            print("Обновляем список прокси!")
-            ioloop.create_task(broker.find(types=["HTTP"], limit=FIND_MAX-len(proxy_dict['http'])))
-            await asyncio.sleep(0.05)
-            ioloop.create_task(find_proxies(proxies))
-            print("После find_proxies")
-        if not is_finding_run and (time.time() - start > TIMEOUT):
-            print("Начинаем проверку прокси")
+
+    print("Заход в main в", start)
+    ioloop.run_in_executor(_executor, HTTPServer(('', 9090), HandleRequests).serve_forever)
+    while True:  # Не создавайте задачи внутри цикла на каждую итерацию!
+        if proxy_find_task.done() and proxy_add_task.done() and (len(proxy_dict['http']) < FIND_MAX):
+            print("Запустили поиск прокси!")
+            proxy_find_task = ioloop.create_task(broker.find(types=["HTTP"], limit=FIND_MAX-len(proxy_dict['http'])))
+        if proxy_add_task.done() and (len(proxy_dict['http']) < FIND_MAX):
+            print("Запустили добавление find_proxies")
+            proxy_add_task = ioloop.create_task(find_proxies(proxies))
+        if proxy_add_task.done() and (time.time() - last_check_time > TIMEOUT):
+            print("Запустили проверку прокси")
             ioloop.create_task(check_proxies())
-            start = time.time()
+            last_check_time = time.time()
+        await asyncio.sleep(0.05)
 
 proxies = asyncio.Queue()
 broker = Broker(proxies, timeout=6)
-
 loop = asyncio.get_event_loop()
 tasks = [loop.create_task(broker.find(types=['HTTP'], limit=3, post=True)),
          loop.create_task(find_proxies(proxies))]
 wait_tasks = asyncio.wait(tasks)
 loop.run_until_complete(wait_tasks)
-print("Прокси набрались")
+print("Прогрев сервиса прокси завершен")
 
 start = time.time()
 ioloop = asyncio.get_event_loop()
-ioloop.run_until_complete(main(proxies, broker))
+ioloop.run_until_complete(main())
 print('Close connection')
