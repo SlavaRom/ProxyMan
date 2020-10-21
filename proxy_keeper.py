@@ -44,7 +44,6 @@ def get_reponce_time(proxy):
         types = proxy['proxy'].split('://')[0]
         proxy = {types: proxy}
         response = requests.get('https://ya.ru/', proxies=proxy, verify=None, timeout=2)
-        print("Ответ во время проверки = ", str(response))
         #response.raise_for_status()
     except requests.exceptions.Timeout as time_err:
         print('The request timed out')
@@ -104,8 +103,6 @@ def get_proxy(proxy_type):  # Находит в proxy_dict лучший прок
             proxy_dict[proto].remove(best_proxy)  # удалим выданный прокси из списка
             print('Get proxy. Time: ', time.time() - start)
             return answer
-    print('Get proxy. Time: ', time.time() - start)
-
 
 async def main():
     proxies = asyncio.Queue()
