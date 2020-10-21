@@ -7,7 +7,7 @@ import time
 
 def get_connection():
     sock = socket.socket()
-    sock.connect(('127.0.0.1', 9090))
+    sock.connect(('127.0.0.1', 8080))
     return sock
 
 def get_proxy(sock, types):
