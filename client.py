@@ -18,7 +18,6 @@ def get_proxy(sock, types):
     print(data)
     return data
 
-
 sock = get_connection()
 
 start = time.time()
