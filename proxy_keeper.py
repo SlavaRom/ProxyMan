@@ -124,10 +124,13 @@ async def main():
         if proxy_find_task.done() and proxy_add_task.done() and (len(proxy_dict['http']) < FIND_MAX):
             print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили поиск http прокси!")
             proxy_find_task = ioloop.create_task(broker.find(types=["HTTP"], limit=FIND_MAX-len(proxy_dict['http'])))
-        # if proxy_find_task.done() and proxy_add_task.done() and (len(proxy_dict['https']) < FIND_MAX):
-        #     print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили поиск https прокси!")
-        #     proxy_find_task = ioloop.create_task(broker.find(types=["HTTPS"], limit=FIND_MAX-len(proxy_dict['https'])))
         if proxy_add_task.done() and (len(proxy_dict['http']) < FIND_MAX):
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили добавление find_proxies")
+            proxy_add_task = ioloop.create_task(find_proxies(proxies))
+        if proxy_find_task.done() and proxy_add_task.done() and (len(proxy_dict['https']) < FIND_MAX):
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили поиск https прокси!")
+            proxy_find_task = ioloop.create_task(broker.find(types=["HTTPS"], limit=FIND_MAX-len(proxy_dict['https'])))
+        if proxy_add_task.done() and (len(proxy_dict['https']) < FIND_MAX):
             print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили добавление find_proxies")
             proxy_add_task = ioloop.create_task(find_proxies(proxies))
         if proxy_add_task.done() and (time.time() - last_check_time > PROXY_CHECKING_TIMEOUT):
@@ -140,7 +143,7 @@ if __name__ == "__main__":
     proxies = asyncio.Queue()
     broker = Broker(proxies, timeout=6)
     loop = asyncio.get_event_loop()
-    tasks = [loop.create_task(broker.find(types=['HTTP'], limit=3, post=True)),
+    tasks = [loop.create_task(broker.find(types=['HTTPS', 'HTTP'], limit=6)),
              loop.create_task(find_proxies(proxies))]
     wait_tasks = asyncio.wait(tasks)
     loop.run_until_complete(wait_tasks)
