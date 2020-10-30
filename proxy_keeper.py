@@ -1,4 +1,3 @@
-import socket
 import asyncio
 import pickle
 import time
@@ -9,18 +8,19 @@ import requests
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime
+log_time = datetime.now
 
 PORT = 9090
 FIND_EXACTLY = 9
 FIND_MAX = 80
 ACTIVE_PROXY = 50
-PROXY_CHECKING_TIMEOUT = 20
+PROXY_CHECKING_TIMEOUT = 360
+BROKER_CHEKING_TIMEOUT = 90
+last_adding_time = time.time()
 
-proxy_dict = {'http': [], 'https': []}
+proxy_dict = {}
 
 _executor = ThreadPoolExecutor(2)
-
-log_time = datetime.now
 
 class HandleRequests(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -45,109 +45,117 @@ def save_proxy_list():
 def get_reponce_time(proxy):
     # измерить и вернуть время отклика. Если плохой прокси, вернуть None
     try:
-        types = proxy['proxy'].split('://')[0]
+        types = proxy.split('://')[0]
         proxy = {types: proxy}
+        print("Чеккер проверяет прокси", proxy)  # TODO Проверка вообще не ходит через прокси сейчас
         response = requests.get('https://ya.ru/', proxies=proxy, verify=None, timeout=2)
         #response.raise_for_status()
     except requests.exceptions.Timeout as time_err:
         print(log_time().now().strftime("[%d.%m.%Y / %H:%M:%S] "), 'The request timed out')
-        return time_err
+        raise time_err
     except requests.exceptions.HTTPError as http_err:
         print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), f'HTTP error occurred: {http_err}')
-        return http_err
+        raise http_err
     except Exception as err:
-        print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), f'Bad proxy: {err}')
+        print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), f'Bad proxy: {err.args}')
         raise err
     return response.elapsed.total_seconds()  # время отклика в секундах
 
 
 async def find_proxies(proxies):  # Заполняет proxy_dict
-    global is_finding_run
     while True:
         proxy = await proxies.get()
         if proxy is None:
-            is_finding_run = False
             break
-        print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Добавляем новый прокси", proxy)
-        proto = 'https' if 'HTTPS' in proxy.types else 'http'
-        val = '%s://%s:%d' % (proto, proxy.host, proxy.port)
-        proxy_dict[proto].append({'proxy': val, 'response_time': proxy.avg_resp_time})
+
+        print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Добавляем новый прокси номер", len(proxy_dict), proxy)
+        val = '{host}:{port}'.format(host=proxy.host, port=proxy.port)
+        proxy_dict[val] = {'response_time': proxy.avg_resp_time,
+                           "proto": proxy.types,
+                           "proxy": val,
+                           "last_used_time": datetime.now(),
+                           "unavailable_until": datetime.now()  # TODO добавить метод "пометить прокси недействительным на n секунд" и добавить в фильтр в get_proxy по этому параметру
+                           }
 
 
 async def check_proxies():  # Обновляет proxy_dict
-    for http_key in ["http", "https"]:  # Чередует "http" и "https"
-        for proxy in proxy_dict[http_key]:
-            try:
-                res_time = await ioloop.run_in_executor(_executor, get_reponce_time, proxy)
-                proxy['response_time'] = res_time
-            except requests.exceptions.Timeout:
-                print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Удаляем плохой прокси', proxy)
-                proxy_dict[http_key].remove(proxy)
-            except requests.exceptions.HTTPError:
-                print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Удаляем плохой прокси', proxy)
-                proxy_dict[http_key].remove(proxy)
+    for proxy in proxy_dict:
+        try:
+            res_time = await ioloop.run_in_executor(_executor, get_reponce_time, proxy)
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Ответ нашего чеккера:", res_time)  # TODO Научиться ловить ошибки - они в другом потоке и готов обрабатывать странные вещи
+            proxy['response_time'] = res_time
+        except requests.exceptions.Timeout:
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Удаляем плохой прокси', proxy)
+            proxy_dict.pop(proxy)
+        except requests.exceptions.HTTPError:
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Удаляем плохой прокси', proxy)
+            proxy_dict.pop(proxy)
+        except Exception as err:
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Неизвестная ошибка во время проверки', err)
 
 
 def get_proxy(proxy_type):  # Находит в proxy_dict лучший прокси и возвращает его
     start = time.time()
-    if isinstance(proxy_type, list):
-        for type_key in proxy_type:  # Если просят http и https, но
-            best_proxy = None
-            type_key = type_key.lower()
-            if type_key != 'http' and type_key != 'https':
-                return TypeError
-            for current_proxy in range(0, len(proxy_dict[type_key])):
-                proxy = proxy_dict[type_key][current_proxy]
-                if best_proxy is None or proxy['response_time'] < best_proxy['response_time']:
-                #best_proxy = {type_key.lower(): proxy}
-                    best_proxy = proxy
-            if not best_proxy:
-                break
-            proto = best_proxy['proxy'].split('://')[0]
-            answer = {proto: best_proxy['proxy']}
-            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Удаляем выданный прокси', proxy)
-            proxy_dict[proto].remove(best_proxy)  # удалим выданный прокси из списка
-            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Время поиска лучшего прокси: ', time.time() - start)
-            return answer
-    else:
+    if not isinstance(proxy_type, list) or not proxy_type:
+        return TypeError  # TODO добавить описание к ошибкам
+
+    best_proxy = None
+    type_key = proxy_type[0].upper()  # TODO сделать цикл
+    if type_key not in ["HTTP", "HTTPS"]:
         return TypeError
 
+    for current_proxy in proxy_dict:
+        proxy = proxy_dict[current_proxy]
+        if type_key not in proxy["proto"].keys():
+            continue
+        if best_proxy is None or proxy['response_time'] < best_proxy['response_time']:
+            best_proxy = proxy
+
+    if not best_proxy:
+        return
+
+    answer = {type_key: type_key.lower() + ":\\" + best_proxy["proxy"]}
+
+    print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Удаляем выданный прокси', best_proxy["proxy"])
+    proxy_dict.pop(best_proxy["proxy"])  # TODO не удалять, а помечать использованными и добавить фильтр "Не отдавать прокси, если уже отдавали недавно"
+    print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Время поиска лучшего прокси: ', time.time() - start)
+    return answer
+
+
 async def main():
-    proxies = asyncio.Queue()
-    broker = Broker(proxies, timeout=6)
-    proxy_find_task = ioloop.create_task(asyncio.sleep(2))
-    proxy_add_task = ioloop.create_task(asyncio.sleep(2))
+    # Создаем сервер для выдачи
+    ioloop.run_in_executor(_executor, HTTPServer(('127.0.0.1', PORT), HandleRequests).serve_forever)
+
+    # Переменные для проверки проксей
+    proxy_check_task = ioloop.create_task(asyncio.sleep(2))
     last_check_time = time.time()
 
-    ioloop.run_in_executor(_executor, HTTPServer(('127.0.0.1', PORT), HandleRequests).serve_forever)
+    # Запускаем поиск и добавление прокси
+    proxies = asyncio.Queue()
+    broker = Broker(proxies, timeout=30, max_conn=2000)
+    print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили поиск http прокси!")
+    broker_task = ioloop.create_task(broker.find(types=["HTTP", "HTTPS"], limit=0))
+    print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили добавление find_proxies")
+    proxy_adding_task = ioloop.create_task(find_proxies(proxies))
+    last_broker_check_time = time.time()
+
     while True:  # Не создавайте задачи внутри цикла на каждую итерацию!
-        if proxy_find_task.done() and proxy_add_task.done() and (len(proxy_dict['http']) < FIND_MAX):
-            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили поиск http прокси!")
-            proxy_find_task = ioloop.create_task(broker.find(types=["HTTP"], limit=FIND_MAX-len(proxy_dict['http'])))
-        if proxy_add_task.done() and (len(proxy_dict['http']) < FIND_MAX):
-            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили добавление find_proxies")
-            proxy_add_task = ioloop.create_task(find_proxies(proxies))
-        if proxy_find_task.done() and proxy_add_task.done() and (len(proxy_dict['https']) < FIND_MAX):
-            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили поиск https прокси!")
-            proxy_find_task = ioloop.create_task(broker.find(types=["HTTPS"], limit=FIND_MAX-len(proxy_dict['https'])))
-        if proxy_add_task.done() and (len(proxy_dict['https']) < FIND_MAX):
-            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили добавление find_proxies")
-            proxy_add_task = ioloop.create_task(find_proxies(proxies))
-        if proxy_add_task.done() and (time.time() - last_check_time > PROXY_CHECKING_TIMEOUT):
+        if proxy_check_task.done() and time.time() - last_check_time > PROXY_CHECKING_TIMEOUT:
             print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили проверку прокси")
-            ioloop.create_task(check_proxies())
+            proxy_check_task = ioloop.create_task(check_proxies())
             last_check_time = time.time()
-        await asyncio.sleep(0.05)
+
+        if time.time() - last_broker_check_time > BROKER_CHEKING_TIMEOUT:  # TODO Перезапускать только когда брокер долго ничего не находит
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Перезапускаем брокера, он нихера не нашел")
+            last_broker_check_time = time.time()
+            broker_task.cancel()
+            proxy_adding_task.cancel()
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили поиск http прокси!")
+            broker_task = ioloop.create_task(broker.find(types=["HTTP", "HTTPS"], limit=0))
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили добавление find_proxies")
+            proxy_adding_task = ioloop.create_task(find_proxies(proxies))
+        await asyncio.sleep(5)
 
 if __name__ == "__main__":
-    proxies = asyncio.Queue()
-    broker = Broker(proxies, timeout=6)
-    loop = asyncio.get_event_loop()
-    tasks = [loop.create_task(broker.find(types=['HTTPS', 'HTTP'], limit=6)),
-             loop.create_task(find_proxies(proxies))]
-    wait_tasks = asyncio.wait(tasks)
-    loop.run_until_complete(wait_tasks)
-    print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Прогрев сервиса прокси завершен")
-
     ioloop = asyncio.get_event_loop()
     ioloop.run_until_complete(main())
