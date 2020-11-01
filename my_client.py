@@ -3,7 +3,7 @@ import json
 import time
 
 for i in range(100):
-    types = {'types': ['https']}
+    types = {'types': ['https', 'http']}
     res = req.get(url="http://127.0.0.1:9090", params=types)
     print(res)
     print(res.content.decode())
