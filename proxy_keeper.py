@@ -9,6 +9,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timedelta
+
 log_time = datetime.now
 
 PORT = 9090
@@ -20,8 +21,12 @@ proxy_dict = {}
 _executor = ThreadPoolExecutor(2)
 sem = asyncio.Semaphore(50)
 
+
 class HandleRequests(BaseHTTPRequestHandler):
     def do_GET(self):
+        """
+        Получает GET запрос и отправляет результат
+        """
         print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Принял get запрос")
         self.send_response(200)
         self.end_headers()
@@ -41,13 +46,17 @@ def save_proxy_list():
 
 
 def get_reponce_time(proxy):
-    # измерить и вернуть время отклика. Если плохой прокси, вернуть None
+    """
+    Измеряет время отклика proxy
+    :param proxy:
+    :return:
+    """
     try:
         proto = list(proxy["proto"].keys())[0]
         proxy = {proto: proto.lower() + ":\\" + proxy["proxy"]}
         print("Чеккер проверяет прокси", proxy)  # TODO Проверка вообще не ходит через прокси сейчас
         response = requests.get('https://ya.ru/', proxies=proxy, verify=None, timeout=2)
-        #response.raise_for_status()
+        # response.raise_for_status()
     except requests.exceptions.Timeout:
         print(log_time().now().strftime("[%d.%m.%Y / %H:%M:%S] "), 'The request timed out')
         raise requests.exceptions.Timeout('The request timed out')
@@ -60,7 +69,12 @@ def get_reponce_time(proxy):
     return response.elapsed.total_seconds()  # время отклика в секундах
 
 
-async def find_proxies(proxies):  # Заполняет proxy_dict
+async def find_proxies(proxies):
+    """
+    Заполняет proxy_dict
+    :param proxies:
+    :return:
+    """
     async with sem:
         while True:
             proxy = await proxies.get()
@@ -76,10 +90,22 @@ async def find_proxies(proxies):  # Заполняет proxy_dict
                                "unavailable_until": datetime.now()
                                }
 
+
 def unavailable_until(proxy, n):
+    """
+    Помечает proxy недоступным на n секунд
+    :param proxy:
+    :param n:
+    :return:
+    """
     proxy['unavailable_until'] = datetime.now() + timedelta(seconds=n)
 
-async def check_proxies():  # Обновляет proxy_dict
+
+async def check_proxies():
+    """
+    Обновляет информацию о времени ответа каждого прокси внутри proxy_dict
+    :return:
+    """
     async with sem:
         for proxy in proxy_dict:
             try:
@@ -93,10 +119,16 @@ async def check_proxies():  # Обновляет proxy_dict
                 print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Удаляем плохой прокси', proxy)
                 proxy_dict.pop(proxy)
             except Exception as err:
-                print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Неизвестная ошибка во время проверки', traceback.format_exc())
+                print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Неизвестная ошибка во время проверки',
+                      traceback.format_exc())
 
 
-def get_proxy(proxy_type):  # Находит в proxy_dict лучший прокси и возвращает его
+def get_proxy(proxy_type):
+    """
+    Находит в proxy_dict лучший прокси и возвращает его
+    :param proxy_type:
+    :return:
+    """
     start = time.time()
     if not isinstance(proxy_type, list) or not proxy_type:
         return TypeError('Передавайте в функцию get_proxy только непустой массив')
@@ -118,7 +150,7 @@ def get_proxy(proxy_type):  # Находит в proxy_dict лучший прок
         if not best_proxy:
             continue
 
-        answer = {type_key: type_key.lower() + ":\\" + best_proxy["proxy"]}
+        answer = {type_key: type_key.lower() + "://" + best_proxy['proxy']}
 
         print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Удаляем выданный прокси', best_proxy["proxy"])
         unavailable_until(best_proxy, 3000)
@@ -149,6 +181,7 @@ async def main():
                 proxy_check_task = ioloop.create_task(check_proxies())
                 last_check_time = time.time()
             await asyncio.sleep(5)
+
 
 if __name__ == "__main__":
     ioloop = asyncio.get_event_loop()
