@@ -24,6 +24,13 @@ sem = asyncio.Semaphore(50)
 
 
 class HandleRequests(BaseHTTPRequestHandler):
+
+    def create_responce(self, status_code, message):
+        self.send_response(status_code)
+        self.end_headers()
+        send = json.dumps(message).encode()
+        self.wfile.write(send)
+
     def do_POST(self):
         print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Принял post запрос")
         content_len = int(self.headers.get('content-length', 0))
@@ -33,38 +40,27 @@ class HandleRequests(BaseHTTPRequestHandler):
 
         if method == "get_proxy":
             if not data.get("params", None) or not isinstance(data["params"]['types'], list):
-                self.send_response(500)
-                self.end_headers()
-                send = json.dumps('Требуется передать  запрос вида {"method": "get_proxy", "params": {"types: ["http", "https"]}}').encode()
-                self.wfile.write(send)
+                self.create_responce(500, 'Требуется передать  запрос вида {"method": "get_proxy", "params": {"types: ["http", "https"]}}')
                 return
 
-            self.send_response(200)
-            self.end_headers()
+
             proxy = get_proxy(data["params"]['types'])
-            send = json.dumps(proxy).encode()
-            self.wfile.write(send)
+            self.create_responce(200, proxy)
             print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Отправил прокси")
 
         if method == "unavailable_until":
             if not data.get("params", None) or not isinstance(data["params"], list) or not isinstance(data["params"][0], dict):
-                self.send_response(500)
-                self.end_headers()
-                send = json.dumps(False).encode()
-                self.wfile.write(send)
+                self.create_responce(500, False)
                 return
 
-            self.send_response(200)
-            self.end_headers()
             proxy = data["params"][0]
             try:
                 bad_time = data["params"][1]
             except IndexError:
                 bad_time = PROXY_IS_INACTIVE
             unavailable_until(proxy, bad_time)
-            send = json.dumps(True).encode()
-            self.wfile.write(send)
-            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Отправил прокси")
+            self.create_responce(200, True)
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Изменил парметр unavailable_until")
 
     def do_GET(self):
         """
