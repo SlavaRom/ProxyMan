@@ -17,12 +17,55 @@ FIND_EXACTLY = 9
 FIND_MAX = 80
 ACTIVE_PROXY = 50
 PROXY_CHECKING_TIMEOUT = 300
+PROXY_IS_INACTIVE = 30
 proxy_dict = {}
 _executor = ThreadPoolExecutor(2)
 sem = asyncio.Semaphore(50)
 
 
 class HandleRequests(BaseHTTPRequestHandler):
+    def do_POST(self):
+        print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Принял post запрос")
+        content_len = int(self.headers.get('content-length', 0))
+        post_body = self.rfile.read(content_len)
+        data = json.loads(post_body.decode())
+        method = data.get("method", None)
+
+        if method == "get_proxy":
+            if not data.get("params", None) or not isinstance(data["params"]['types'], list):
+                self.send_response(500)
+                self.end_headers()
+                send = json.dumps('Требуется передать  запрос вида {"method": "get_proxy", "params": {"types: ["http", "https"]}}').encode()
+                self.wfile.write(send)
+                return
+
+            self.send_response(200)
+            self.end_headers()
+            proxy = get_proxy(data["params"]['types'])
+            send = json.dumps(proxy).encode()
+            self.wfile.write(send)
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Отправил прокси")
+
+        if method == "unavailable_until":
+            if not data.get("params", None) or not isinstance(data["params"], list) or not isinstance(data["params"][0], dict):
+                self.send_response(500)
+                self.end_headers()
+                send = json.dumps(False).encode()
+                self.wfile.write(send)
+                return
+
+            self.send_response(200)
+            self.end_headers()
+            proxy = data["params"][0]
+            try:
+                bad_time = data["params"][1]
+            except IndexError:
+                bad_time = PROXY_IS_INACTIVE
+            unavailable_until(proxy, bad_time)
+            send = json.dumps(True).encode()
+            self.wfile.write(send)
+            print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Отправил прокси")
+
     def do_GET(self):
         """
         Получает GET запрос и отправляет результат
@@ -91,7 +134,7 @@ async def find_proxies(proxies):
                                }
 
 
-def unavailable_until(proxy, n):
+def unavailable_until(proxy, n=PROXY_IS_INACTIVE):
     """
     Помечает proxy недоступным на n секунд
     :param proxy:
@@ -152,8 +195,8 @@ def get_proxy(proxy_type):
 
         answer = {type_key: type_key.lower() + "://" + best_proxy['proxy']}
 
-        print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Удаляем выданный прокси', best_proxy["proxy"])
-        unavailable_until(best_proxy, 3000)
+        print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Помечаем выданный прокси неактивным', best_proxy["proxy"])
+        unavailable_until(best_proxy)
         print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Время поиска лучшего прокси: ', time.time() - start)
         return answer
 
