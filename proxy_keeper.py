@@ -62,21 +62,6 @@ class HandleRequests(BaseHTTPRequestHandler):
             self.create_responce(200, True)
             print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Изменил парметр unavailable_until")
 
-    def do_GET(self):
-        """
-        Получает GET запрос и отправляет результат
-        """
-        print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Принял get запрос")
-        self.send_response(200)
-        self.end_headers()
-        params = self.path[2:]
-        params = params.replace('&', '')
-        types = params.split('types=')[1:]
-        proxy = get_proxy(types)
-        send = json.dumps(proxy).encode()
-        self.wfile.write(send)
-        print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Отправил прокси")
-
 
 def save_proxy_list():
     print("save: ", proxy_dict)
