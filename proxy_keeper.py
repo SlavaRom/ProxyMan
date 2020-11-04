@@ -174,7 +174,7 @@ def get_proxy(proxy_type):
         if not best_proxy:
             continue
 
-        answer = {type_key: type_key.lower() + "://" + best_proxy['proxy']}
+        answer = {type_key.lower(): type_key.lower() + "://" + best_proxy['proxy']}
 
         print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), 'Помечаем выданный прокси неактивным', best_proxy["proxy"])
         unavailable_until(best_proxy)
