@@ -195,7 +195,7 @@ async def main():
         proxies = asyncio.Queue()
         broker = Broker(proxies, timeout=30, max_conn=2000)
         print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили поиск http прокси!")
-        ioloop.create_task(broker.find(types=["HTTP", "HTTPS"], limit=0))
+        ioloop.create_task(broker.find(types=[('HTTP', ('Anonymous', 'High')), 'HTTPS'], limit=0))
         print(log_time().strftime("[%d.%m.%Y / %H:%M:%S] "), "Запустили добавление find_proxies")
         ioloop.create_task(find_proxies(proxies))
 
